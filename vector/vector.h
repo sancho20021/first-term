@@ -3,14 +3,13 @@
 
 #include <cstddef>
 #include <algorithm>
-#include <iostream>
-#include <assert.h>
+#include <cassert>
 
 template<typename T>
 
 struct vector {
-    typedef T *iterator;
-    typedef T const *const_iterator;
+    using iterator = T *;
+    using const_iterator = T const *;
 
     vector();                               // O(1) nothrow
     vector(vector const &);                  // O(N) strong
@@ -49,25 +48,22 @@ struct vector {
     const_iterator begin() const;           // O(1) nothrow
     const_iterator end() const;             // O(1) nothrow
 
-    iterator insert(iterator pos, T const &); // O(N) weak
     iterator insert(const_iterator pos, T const &); // O(N) weak
 
-    iterator erase(iterator pos);           // O(N) weak
     iterator erase(const_iterator pos);     // O(N) weak
 
-    iterator erase(iterator first, iterator last); // O(N) weak
     iterator erase(const_iterator first, const_iterator last); // O(N) weak
 
 private:
-    size_t increase_capacity();
+    void increase_capacity();
 
     static void destroy_elements(T const *start, size_t size);
 
     void change_buf(size_t new_capacity);
 
-    static void copy_elements(T *from, T *to, size_t size);
+    static T *my_alloc(size_t size);
 
-    T *my_alloc(size_t size);
+    static T *copy_buf(size_t capacity, T *old_buf, size_t size);
 
 private:
     T *data_;
@@ -86,15 +82,7 @@ vector<T>::vector(const vector<T> &other) :
         size_(other.size_),
         capacity_(size_),
         data_(nullptr) {
-    if (other.size_ != 0) {
-        data_ = my_alloc(other.size_);
-        try {
-            copy_elements(other.data_, data_, size_);
-        } catch (...) {
-            operator delete(data_);
-            throw;
-        }
-    }
+    data_ = copy_buf(size_, other.data_, size_);
 }
 
 template<typename T>
@@ -174,7 +162,7 @@ void vector<T>::push_back(const T &element) {
 }
 
 template<typename T>
-typename vector<T>::iterator vector<T>::insert(iterator pos, const T &element) {
+typename vector<T>::iterator vector<T>::insert(const_iterator pos, const T &element) {
     ptrdiff_t position = pos - data_;
     push_back(element);
     iterator realPos = data_ + position;
@@ -185,16 +173,16 @@ typename vector<T>::iterator vector<T>::insert(iterator pos, const T &element) {
 }
 
 template<typename T>
-typename vector<T>::iterator vector<T>::erase(iterator pos) {
+typename vector<T>::iterator vector<T>::erase(const_iterator pos) {
     return erase(pos, pos + 1);
 }
 
 template<typename T>
-typename vector<T>::iterator vector<T>::erase(iterator first, iterator last) {
+typename vector<T>::iterator vector<T>::erase(const_iterator first, const_iterator last) {
     assert(data_ <= first && last <= data_ + size_);
     ptrdiff_t delt = last - first;
     if (delt <= 0) {
-        return last;
+        return last - data_ + data_;
     }
     for (ptrdiff_t i = first - data_; i < size_ - delt; i++) {
         data_[i] = data_[i + delt];
@@ -262,55 +250,51 @@ typename vector<T>::const_iterator vector<T>::end() const {
 
 template<typename T>
 void vector<T>::destroy_elements(T const *start, size_t size) {
-    for (size_t i = size - 1; i != -1; i--) {
-        start[i].~T();
+    for (size_t i = size; i != 0; i--) {
+        start[i - 1].~T();
     }
 }
 
 template<typename T>
-size_t vector<T>::increase_capacity() {
+void vector<T>::increase_capacity() {
     if (size_ == capacity_) {
         reserve(capacity_ == 0 ? 4 : 2 * capacity_);
     }
-    return size_;
 }
 
 //O(N) strong
 template<typename T>
 void vector<T>::change_buf(size_t new_capacity) {
-    T *new_data = nullptr;
-    if (new_capacity != 0) {
-        new_data = my_alloc(new_capacity);
-        try {
-            copy_elements(data_, new_data, size_);
-        } catch (...) {
-            operator delete(new_data);
-            throw;
-        }
-    }
+    T *temp = copy_buf(new_capacity, data_, size_);
     destroy_elements(data_, size_);
     operator delete(data_);
-    data_ = new_data;
+    data_ = temp;
     capacity_ = new_capacity;
-}
-
-//O(N) strong
-template<typename T>
-void vector<T>::copy_elements(T *from, T *to, size_t size) {
-    size_t i = 0;
-    try {
-        for (; i != size; i++) {
-            new(to + i) T(from[i]);
-        }
-    } catch (...) {
-        destroy_elements(to, i);
-        throw;
-    }
 }
 
 template<typename T>
 T *vector<T>::my_alloc(size_t size) {
     return static_cast<T *>(operator new(size * sizeof(T)));
+}
+
+//O(n) strong
+template<typename T>
+T *vector<T>::copy_buf(size_t new_capacity, T *old_data, size_t size) {
+    T *new_data = nullptr;
+    if (new_capacity != 0) {
+        new_data = my_alloc(new_capacity);
+        size_t i = 0;
+        try {
+            for (; i != size; i++) {
+                new(new_data + i) T(old_data[i]);
+            }
+        } catch (...) {
+            destroy_elements(new_data, i);
+            operator delete(new_data);
+            throw;
+        }
+    }
+    return new_data;
 }
 
 #endif // VECTOR_H
