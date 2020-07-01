@@ -3,8 +3,8 @@
         global          _start
 _start:
 
-        sub             rsp, 6*num_len  ;let us operate with 6 bloks, each is num_len long
-        mov             rcx, qword_kol  ;input length = qword_kol
+        sub             rsp, 4*num_len  ;let us operate with 4 bloks, each is num_len long
+        mov             rcx, qwords_amount  ;input length = qwords_amount
 
         lea             r8,  [rsp]      ;r8 will be the address of the first number (a), 1st block
         lea             rdi, [r8]       ;read a
@@ -13,12 +13,11 @@ _start:
         lea             rdi, [r9]           ;read b
         call            read_long
 
-        lea             r10, [rsp+2*num_len];r10 will be the address for temporary calculations (from 3th to 4th blocks
-        lea             rdi, [rsp+4*num_len];from 5-6th blocks there will be answer
+        lea             rdi, [rsp+2*num_len];from 3-4th blocks there will be answer
 
-        mov             rcx, qword_kol
+        mov             rcx, qwords_amount
         call            mul_long_long
-        lea             rcx, [2*qword_kol]
+        lea             rcx, [2*qwords_amount]
         call            write_long
         mov             al, 0x0a
         call            write_char
@@ -29,14 +28,12 @@ _start:
 ;   rcx -- length of long numbers in qwords
 ;    r8 -- address of multiplier 1
 ;    r9 -- address of multiplier 2
-;   r10 --address of space for temporary calculations, 2*rcx space required (in qwords)
 
 ;result:
 ;    product is written ro rdi
 ;   length of the product is 2*rcx (in qwords)
 mul_long_long:
         push        rbx
-        push        rcx
         push        r8
         push        r9
         push        r10
@@ -45,27 +42,33 @@ mul_long_long:
         push        r13 ;another helpful register)
         push        r14
         push        r15 ;counter
+
+        shl         rcx, 4
+        sub         rsp, rcx
+        shr         rcx, 4
+        mov         r10, rsp
         xor         r11, r11 ;i should be zero in the beginning
         mov         r15, rcx
-        lea         rcx, [2*rcx]    ;init the answer with zero
+        shl         rcx, 1    ;init the answer with zero
         call        set_zero
-        clc
 .loop:
         mov         r13, rdi            ;keep rdi safe
 
-        lea         rcx, [2*qword_kol]    ;set space for temporary calculations zero
-        mov         rdi, r10            ;our temporary calculations will be smth like this: (b<<i)*a[i]
+        mov         rdi, r10
         call        set_zero
         lea         r14, [r10+r11]    ;shift b
-        lea         rcx, [qword_kol]
+        shr         rcx, 1
         call        copy_from_r9_to_r14
 
         mov         rbx, [r8+r11]       ;rbx = a[i]
-        lea         rcx, [2*qword_kol]
+        inc         rcx
+        lea         rdi, [r10+r11]
         call        mul_long_short
-        mov         rsi, rdi            ;now from rsi starts array-number (b<<i)*a[i]
+        dec         rcx
+        mov         rsi, r10            ;now from rsi starts array-number (b<<i)*a[i]
         mov         rdi, r13            ;prepare the rdi for the answer
-
+        
+        shl         rcx, 1
         call        add_long_long
 
 
@@ -74,6 +77,9 @@ mul_long_long:
         test        r15, r15
         jnz         .loop
 
+        shl     rcx, 3
+        add     rsp, rcx
+        shr     rcx, 4
 
         pop     r15
         pop     r14
@@ -83,7 +89,6 @@ mul_long_long:
         pop     r10
         pop     r9
         pop     r8
-        pop     rcx
         pop     rbx
         ret
 
@@ -392,5 +397,5 @@ print_string:
 invalid_char_msg:
                 db              "Invalid character: "
 invalid_char_msg_size: equ             $ - invalid_char_msg
-qword_kol:    equ        128
-num_len:    equ        qword_kol*8
+qwords_amount:    equ        128
+num_len:    equ        qwords_amount*8
