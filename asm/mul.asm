@@ -1,166 +1,109 @@
 		section         .text
 
-                global          _start
+        global          _start
 _start:
 
-                sub             rsp, 6*num_len
-		lea		r8, [rsp+3*num_len];r8 for rdi temp
-		lea		r9, [rsp+4*num_len];r9 for answer
-		lea		r12, [rsp+5*num_len];r12 for rsi temp
-                mov             rcx, qword_kol
-                lea		rdi, [rsp+2*num_len] 
-                call            read_long
-		lea		rdi, [rsp+num_len]
-                call            read_long
-		lea		rsi, [rsp+2*num_len]
-		mov		rdi, r9
-		call		set_zero	;to initialize answer with 0
-		mov		rdi, rsp
-		call		set_zero	;to initialize space for shifting with 0
-		lea		rdi, [rsp+num_len]	
-		call 		mul_long_long
-		mov		rdi, r9
-                call            write_long
-		mov		al, 0x0a
-		call 		write_char
-                jmp             exit
+        sub             rsp, 6*num_len  ;let us operate with 6 bloks, each is num_len long
+		mov             rcx, qword_kol  ;input length = qword_kol
+
+		lea             r8,  [rsp]      ;r8 will be the address of the first number (a), 1st block
+        lea		        rdi, [r8]       ;read a
+        call            read_long
+        lea             r9,  [rsp+num_len]  ;r9 will be the address of the second number(b), 2nd block
+		lea		        rdi, [r9]           ;read b
+        call            read_long
+
+        lea             r10, [rsp+2*num_len];r10 will be the address for temporary calculations (from 3th to 4th blocks
+		lea	            rdi, [rsp+4*num_len];from 5-6th blocks there will be answer
+
+        mov             rcx, qword_kol
+		call 		    mul_long_long
+		lea             rcx, [2*qword_kol]
+        call            write_long
+		mov		        al, 0x0a
+		call 		    write_char
+        jmp             exit
 
 
 ;multiplies 2 long numbers
-;	rdi -- address of multiplier 1
-;	rsi -- address of multiplier 2
-;	rcx -- length of long numbers in qwords
+;   rcx -- length of long numbers in qwords
+;	r8 -- address of multiplier 1
+;	r9 -- address of multiplier 2
+;   r10 --address of space for temporary calculations, 2*rcx space required (in qwords)
+
 ;result:
 ;	product is written ro rdi
+;   length of the product is 2*rcx (in qwords)
 mul_long_long:
-		push		rdi
-		push		rsi
-		mov		r10, rcx ;let r10 save rcx
-		call 		copy_to_r8	
-		call		copy_to_r12
-		xor		r11, r11 ; r11 is number of current block		
-		clc
-.loop:	
-		call		copy_to_rdi
-		mov		rbx, [r12+r11]
-		call		mul_long_short	
-		sub		rdi, r11
-		call		copy_to_rsi
-		call		add_long_long
-		call		copy_to_r9
-		call		set_zero
-		add		rdi, r11		
-
-
-		dec		r10
-		add		r11, 8
-		test		r10, r10
-		jnz		.loop
-
-		pop		rsi
-		pop 		rdi
-
-
-		ret
-
-
-;copies array from rdi to r8
-;	rcx -- length of array
-copy_to_r8:
-		push 		rdi
-		push		rcx
+        push        rbx
+        push        rcx
 		push		r8
+		push        r9
+        push        r10
+        push        r11 ;register for i
+        push        r12 ;another register that I use
+		push        r13 ;another helpful register)
+		push        r14
+		push        r15 ;counter
+		xor		    r11, r11 ;i should be zero in the beginning
+		mov         r15, rcx
+		lea         rcx, [2*rcx]    ;init the answer with zero
+        call		set_zero
 		clc
 .loop:
-		mov		rax, [rdi]
-		mov		[r8], rax
-		add		rdi, 8
-		add		r8, 8
-		dec		rcx
-		jnz		.loop
-		pop r8
-		pop rcx
-		pop rdi
+        mov         r13, rdi            ;keep rdi safe
+
+        lea         rcx, [2*qword_kol]    ;set space for temporary calculations zero
+        mov         rdi, r10            ;our temporary calculations will be smth like this: (b<<i)*a[i]
+        call		set_zero
+        lea         r14, [r10+r11]    ;shift b
+        lea         rcx, [qword_kol]
+        call        copy_from_r9_to_r14
+
+        mov         rbx, [r8+r11]       ;rbx = a[i]
+		lea         rcx, [2*qword_kol]
+		call		mul_long_short
+		mov         rsi, rdi            ;now from rsi starts array-number (b<<i)*a[i]
+		mov         rdi, r13            ;prepare the rdi for the answer
+
+		call		add_long_long
+
+
+        add		    r11, 8      ; next a[i]
+        dec         r15         ;dec counter
+		test		r15, r15
+		jnz		    .loop
+
+
+        pop     r15
+        pop     r14
+        pop     r13
+        pop     r12
+        pop     r11
+        pop     r10
+        pop     r9
+        pop     r8
+        pop     rcx
+        pop     rbx
 		ret
 
-;copies array from r8 to rdi
-;	rcx -- length of array
-copy_to_rdi:
-		push		rdi
-		push		rcx
-		push 		r8
-		clc
+;rcx -- length of array
+copy_from_r9_to_r14:
+        push 		r9
+        push		rcx
+        push		r14
+        clc
 .loop:
-		mov		rax, [r8]
-		mov		[rdi], rax
-		add		rdi, 8
-		add		r8, 8
-		dec		rcx
-		jnz		.loop
-		pop r8
-		pop rcx
-		pop rdi
-		ret
-
-
-
-;copies array from rdi to r9
-;	rcx -- length of array
-copy_to_r9:
-		push 		rdi
-		push		rcx
-		push		r9
-		clc
-.loop:
-		mov		rax, [rdi]
-		mov		[r9], rax
-		add		rdi, 8
-		add		r9, 8
-		dec		rcx
-		jnz		.loop
-		pop r9
-		pop rcx
-		pop rdi
-		ret
-
-;copies array from r9 to rsi
-;	rcx -- length of array
-copy_to_rsi:
-		push		rsi
-		push		rcx
-		push 		r9
-		clc
-.loop:
-		mov		rax, [r9]
-		mov		[rsi], rax
-		add		rsi, 8
-		add		r9, 8
-		dec		rcx
-		jnz		.loop
-		pop r9
-		pop rcx
-		pop rsi
-		ret
-
-;copies array from rsi to r12
-;	rcx -- length of array
-copy_to_r12:
-		push 		rsi
-		push		rcx
-		push		r12
-		clc
-.loop:
-		mov		rax, [rsi]
-		mov		[r12], rax
-		add		rsi, 8
-		add		r12, 8
-		dec		rcx
-		jnz		.loop
-		pop r12
-		pop rcx
-		pop rsi
-		ret
-
+        mov		rax, [r9]
+        mov		[r14], rax
+        add		r14, 8
+        add		r9, 8
+        dec		rcx
+        jnz		.loop
+        pop     r14
+        pop     rcx
+        pop     r9
+        ret
 	
 
 ; adds two long number
@@ -221,13 +164,13 @@ add_long_short:
 ; result:
 ;    product is written to rdi
 mul_long_short:
-		push 		rsi
+		        push            rsi
                 push            rax
                 push            rdi
                 push            rcx
 
                 xor             rsi, rsi
-.loop:
+    .loop:
                 mov             rax, [rdi]
                 mul             rbx
                 add             rax, rsi
@@ -241,7 +184,7 @@ mul_long_short:
                 pop             rcx
                 pop             rdi
                 pop             rax
-		pop		rsi
+		        pop		        rsi
                 ret
 
 ; divides long number by a short
@@ -439,18 +382,15 @@ exit:
 ;    rdx -- size
 print_string:
                 push            rax
-
                 mov             rax, 1
                 mov             rdi, 1
                 syscall
-
                 pop             rax
                 ret
-
 
                 section         .rodata
 invalid_char_msg:
                 db              "Invalid character: "
 invalid_char_msg_size: equ             $ - invalid_char_msg
-qword_kol:	equ		256
+qword_kol:	equ		128
 num_len:	equ		qword_kol*8
