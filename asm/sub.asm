@@ -9,8 +9,8 @@ _start:
                 call            read_long
                 add             rdi, 128*8
                 call            read_long
-		        mov 		    rsi, rdi
-		        sub		        rdi, 128*8
+		mov 		rsi, rdi
+		sub		rdi, 128*8
                 call            sub_long_long
 
                 call            write_long
