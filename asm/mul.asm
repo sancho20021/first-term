@@ -42,34 +42,33 @@ mul_long_long:
         push        r13 ;another helpful register)
         push        r14
         push        r15 ;counter
+        push        rsi
 
-        shl         rcx, 4
-        sub         rsp, rcx
-        shr         rcx, 4
+        call        calculate_shift
+        sub         rsp, rsi ;prepare space for temporary calculations
         mov         r10, rsp
         xor         r11, r11 ;i should be zero in the beginning
         mov         r15, rcx
         shl         rcx, 1    ;init the answer with zero
         call        set_zero
-.loop:
-        mov         r13, rdi            ;keep rdi safe
-
-        mov         rdi, r10
-        call        set_zero
-        lea         r14, [r10+r11]    ;shift b
         shr         rcx, 1
-        call        copy_from_r9_to_r14
+        inc         rcx
+.loop:
+        push        rdi
+        mov         rdi, r10
+        call        set_zero;zero the temporary calculations array
+        dec         rcx
+        call        copy_from_r9_to_r10 ;put b to it
 
         mov         rbx, [r8+r11]       ;rbx = a[i]
         inc         rcx
-        lea         rdi, [r10+r11]
         call        mul_long_short
-        dec         rcx
-        mov         rsi, r10            ;now from rsi starts array-number (b<<i)*a[i]
-        mov         rdi, r13            ;prepare the rdi for the answer
-        
-        shl         rcx, 1
+        pop         rdi
+
+        add         rdi, r11 ;add b*a[i] to proper position of answer
+        mov         rsi, r10
         call        add_long_long
+        sub         rdi, r11
 
 
         add         r11, 8      ; next a[i]
@@ -77,10 +76,11 @@ mul_long_long:
         test        r15, r15
         jnz         .loop
 
-        shl     rcx, 3
-        add     rsp, rcx
-        shr     rcx, 4
+        dec         rcx
+        call        calculate_shift
+        add         rsp, rsi
 
+        pop     rsi
         pop     r15
         pop     r14
         pop     r13
@@ -93,23 +93,28 @@ mul_long_long:
         ret
 
 ;rcx -- length of array
-copy_from_r9_to_r14:
+copy_from_r9_to_r10:
         push         r9
         push        rcx
-        push        r14
+        push        r10
         clc
 .loop:
         mov        rax, [r9]
-        mov        [r14], rax
-        add        r14, 8
+        mov        [r10], rax
+        add        r10, 8
         add        r9, 8
         dec        rcx
         jnz        .loop
-        pop        r14
+        pop        r10
         pop        rcx
         pop        r9
         ret
-    
+
+;puts to rsi (rcx+1)*qword_len
+calculate_shift:
+        lea        rsi, [rcx+1]
+        lea        rsi, [rsi*8]
+        ret
 
 ; adds two long number
 ;    rdi -- address of summand #1 (long number)
@@ -398,4 +403,5 @@ invalid_char_msg:
                 db              "Invalid character: "
 invalid_char_msg_size: equ             $ - invalid_char_msg
 qwords_amount:    equ        128
-num_len:    equ        qwords_amount*8
+qword_len:  equ        8
+num_len:    equ        qwords_amount*qword_len
