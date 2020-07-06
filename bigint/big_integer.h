@@ -92,14 +92,14 @@ private:
 
     friend void invert(big_integer &x);
 
-    big_integer two_completement(size_t) const; 
+    big_integer two_completement(size_t) const;
 
     big_integer to_unsigned() const;
 
     std::pair<big_integer, uint32_t> div_long_short(uint32_t x) const;
 
     friend big_integer logical_op(big_integer const &a, big_integer const &b,
-                           uint32_t (*op)(uint32_t a, uint32_t b));
+                                  uint32_t (*op)(uint32_t a, uint32_t b));
 
     bool smaller(big_integer const &dq, uint64_t k, uint64_t m) const;
 
@@ -107,48 +107,17 @@ private:
 
     void difference(big_integer const &dq, uint64_t k, uint64_t m);
 
-    bool is_zero() const;
-
     friend int positive_equal_size_compare(big_integer const &a, big_integer const &b);
 
     friend bool a_smaller_b(big_integer const &a, big_integer const &b);
 
+    static const big_integer ZERO;
+
 private:
     bool sign;
     std::vector<uint32_t> digits;
+    static const uint32_t INT32_MIN_POSITIVE = 2147483648u;
 };
-
-big_integer operator+(big_integer const &a, big_integer const &b);
-
-big_integer operator-(big_integer const &a, big_integer const &b);
-
-big_integer operator*(big_integer const &a, big_integer const &b);
-
-big_integer operator/(big_integer const &a, big_integer const &b);
-
-big_integer operator%(big_integer const &a, big_integer const &b);
-
-big_integer operator&(big_integer const &a, big_integer const &b);
-
-big_integer operator|(big_integer const &a, big_integer const &b);
-
-big_integer operator^(big_integer const &a, big_integer const &b);
-
-big_integer operator<<(big_integer const &a, int b);
-
-big_integer operator>>(big_integer const &a, int b);
-
-bool operator==(big_integer const &a, big_integer const &b);
-
-bool operator!=(big_integer const &a, big_integer const &b);
-
-bool operator<(big_integer const &a, big_integer const &b);
-
-bool operator>(big_integer const &a, big_integer const &b);
-
-bool operator<=(big_integer const &a, big_integer const &b);
-
-bool operator>=(big_integer const &a, big_integer const &b);
 
 std::string to_string(big_integer const &a);
 
