@@ -8,6 +8,7 @@
 using uint128_t = unsigned __int128;
 const big_integer big_integer::ZERO(0);
 const big_integer big_integer::ONE(1);
+const uint64_t UINT32_MAX_L = static_cast<uint64_t>(UINT32_MAX);
 
 big_integer::big_integer() {
     digits.push_back(0);
@@ -18,7 +19,7 @@ big_integer::big_integer(big_integer const &other) = default;
 
 big_integer::big_integer(int a) {
     sign = a < 0;
-    digits.push_back(a == INT32_MIN ? INT32_MIN_POSITIVE : static_cast<uint32_t>(abs(a)));
+    digits.push_back(a == INT32_MIN ? INT32_MIN_POSITIVE : static_cast<uint32_t>(std::abs(a)));
 }
 
 const size_t DIGITS_IN_UINT32_T = 9;
@@ -124,49 +125,44 @@ big_integer big_integer::operator+() const { return *this; }
 
 big_integer big_integer::operator-() const {
     big_integer res(*this);
-    if (res != ZERO) {
-        res.sign = !res.sign;
-    } else {
-        res.sign = false;
-    }
+    res.sign = res == ZERO ? false : !res.sign;
     return res;
 }
 
 big_integer big_integer::operator~() const {
-    return -big_integer(*this) - 1;
+    return -big_integer(*this) - ONE;
 }
 
 big_integer &big_integer::operator++() {
-    return *this = *this + 1;
+    return *this = *this + ONE;
 }
 
 big_integer big_integer::operator++(int) {
     big_integer res = *this;
-    *this = *this + 1;
+    *this = *this + ONE;
     return res;
 }
 
 big_integer &big_integer::operator--() {
-    return *this = *this - 1;
+    return *this = *this - ONE;
 }
 
 big_integer big_integer::operator--(int) {
     big_integer res = *this;
-    *this = *this - 1;
+    *this = *this - ONE;
     return res;
 }
 
 big_integer add_abs(big_integer const &a, big_integer const &b, bool res_sign) {
-    big_integer res = a;
+    big_integer res = big_integer::abs(a);
     uint64_t carry = 0;
-    res.sign = false;
     for (size_t i = 0; i < std::max(res.digits.size(), b.digits.size()) || carry; i++) {
         if (i == res.digits.size()) {
             res.digits.push_back(0);
         }
         uint64_t add_res = res.digits[i] + carry + (i < b.digits.size() ? b.digits[i] : 0);
-        carry = add_res > static_cast<uint64_t>(UINT32_MAX) ? 1 : 0;
-        add_res -= carry * (static_cast<uint64_t>(UINT32_MAX) + 1);
+        carry = add_res > UINT32_MAX_L ? 1 : 0;
+        add_res -= carry * (UINT32_MAX_L + 1);
         res.digits[i] = static_cast<uint32_t>(add_res);
     }
     res.sign = res == big_integer::ZERO ? false : res_sign;
@@ -175,8 +171,7 @@ big_integer add_abs(big_integer const &a, big_integer const &b, bool res_sign) {
 
 big_integer sub_abs(big_integer const &a, big_integer const &b, bool res_sign) {
     bool less = abs_compare(a, b) == -1;
-    auto big = less ? b : a;
-    big.sign = false;
+    auto big = big_integer::abs(less ? b : a);
     auto small = less ? a : b;
     int64_t carry = 0;
     small.digits.resize(big.digits.size());
@@ -184,7 +179,7 @@ big_integer sub_abs(big_integer const &a, big_integer const &b, bool res_sign) {
         int64_t sub_res = big.digits[i] - carry - small.digits[i];
         carry = (sub_res < 0) ? 1 : 0;
         if (carry) {
-            sub_res += static_cast<uint64_t>(UINT32_MAX) + 1;
+            sub_res += UINT32_MAX_L + 1;
         }
         big.digits[i] = static_cast<uint32_t>(sub_res);
     }
@@ -217,13 +212,13 @@ big_integer operator*(big_integer const &a, big_integer const &b) {
     res.digits.resize(a.digits.size() + b.digits.size());
     res.sign = a.sign ^ b.sign;
     uint64_t carry = 0;
-    for (uint32_t i = 0; i < a.digits.size(); i++) {
+    for (size_t i = 0; i < a.digits.size(); i++) {
         for (uint32_t j = 0; j < b.digits.size() || carry; j++) {
             uint128_t mul_res =
                     res.digits[i + j] + carry +
                     static_cast<uint64_t>(a.digits[i]) * (j < b.digits.size() ? b.digits[j] : 0);
-            res.digits[i + j] = static_cast<uint32_t>(mul_res % (static_cast<uint64_t>(UINT32_MAX) + 1));
-            carry = static_cast<uint32_t>(mul_res / (static_cast<uint64_t>(UINT32_MAX) + 1));
+            res.digits[i + j] = static_cast<uint32_t>(mul_res % (UINT32_MAX_L + 1));
+            carry = static_cast<uint32_t>(mul_res / (UINT32_MAX_L + 1));
         }
     }
     res.remove_leading_zeros();
@@ -238,9 +233,9 @@ std::pair<big_integer, uint32_t> big_integer::div_long_short(uint32_t x) const {
     big_integer res;
     res.digits.pop_back();
     res.digits.resize(digits.size());
-    for (int32_t i = static_cast<int32_t>(digits.size()) - 1; i >= 0; i--) {
-        uint64_t cur_val = digits[i] + carry * (static_cast<uint64_t>(UINT32_MAX) + 1);
-        res.digits[i] = static_cast<uint32_t>(cur_val / x);
+    for (size_t i = digits.size(); i > 0; i--) {
+        uint64_t cur_val = digits[i - 1] + carry * (UINT32_MAX_L + 1);
+        res.digits[i - 1] = static_cast<uint32_t>(cur_val / x);
         carry = cur_val % x;
     }
     res.sign = res == ZERO ? false : sign;
@@ -281,18 +276,15 @@ big_integer operator/(big_integer const &a, big_integer const &b) {
     if (b == big_integer::ZERO) {
         throw std::runtime_error("Division by zero");
     } else if (a.digits.size() < b.digits.size()) {
-        big_integer res;
-        return res;
+        return big_integer::ZERO;
     } else if (b.digits.size() == 1) {
         return !b.sign ? a.div_long_short(b.digits[0]).first : -(a.div_long_short(b.digits[0]).first);
     }
     bool res_sign = a.sign ^b.sign;
     auto n = a.digits.size(), m = b.digits.size();
     auto f = (1L << 32) / (uint64_t(b.digits[m - 1]) + 1);
-    big_integer r = a * f;
-    big_integer d = b * f;
-    r.sign = false;
-    d.sign = false;
+    big_integer r = big_integer::abs(a * f);
+    big_integer d = big_integer::abs(b * f);
     big_integer q;
     q.digits.resize(n - m + 1);
     r.digits.push_back(0);
@@ -355,10 +347,7 @@ big_integer operator<<(big_integer const &a, int b) {
     auto bits_shift_amount = digits_shift_amount % BITS_IN_DIGIT;
     digits_shift_amount /= BITS_IN_DIGIT;
     big_integer res;
-    res.digits.pop_back();
-    for (uint32_t i = 0; i < digits_shift_amount; i++) {
-        res.digits.push_back(0);
-    }
+    res.digits.resize(digits_shift_amount);
     for (auto i : a.digits) {
         res.digits.push_back(i);
     }
@@ -393,10 +382,10 @@ big_integer operator>>(big_integer const &a, int b) {
         return res;
     }
     res.digits.pop_back();
-    for (uint32_t i = digits_shift_amount; i < num.digits.size(); i++) {
+    for (size_t i = digits_shift_amount; i < num.digits.size(); i++) {
         res.digits.push_back(num.digits[i]);
     }
-    for (uint32_t i = 0; i < res.digits.size() - 1; i++) {
+    for (size_t i = 0; i < res.digits.size() - 1; i++) {
         res.digits[i] >>= bits_shift_amount;
         uint32_t small_shift = res.digits[i + 1] << (BITS_IN_DIGIT - bits_shift_amount);
         res.digits[i] += small_shift;
@@ -420,7 +409,7 @@ bool operator!=(big_integer const &a, big_integer const &b) {
     if (a.digits.size() != b.digits.size() || a.sign != b.sign) {
         return true;
     }
-    for (uint32_t i = 0; i < a.digits.size(); i++) {
+    for (size_t i = 0; i < a.digits.size(); i++) {
         if (a.digits[i] != b.digits[i]) {
             return true;
         }
@@ -434,7 +423,7 @@ int abs_compare(big_integer const &a, big_integer const &b) {
     } else if (a.digits.size() > b.digits.size()) {
         return 1;
     }
-    for (auto i = static_cast<uint32_t>(a.digits.size()); i > 0; i--) {
+    for (size_t i = a.digits.size(); i > 0; i--) {
         if (a.digits[i - 1] > b.digits[i - 1]) {
             return 1;
         } else if (a.digits[i - 1] < b.digits[i - 1]) {
@@ -444,16 +433,18 @@ int abs_compare(big_integer const &a, big_integer const &b) {
     return 0;
 }
 
-bool operator<(big_integer const &a, big_integer const &b) {
+bool less_x_greater(big_integer const &a, big_integer const &b, bool sign_flag) {
     if (a.sign != b.sign) {
-        return a.sign;
-    } else return (!a.sign && abs_compare(a, b) == -1) || (a.sign && abs_compare(a, b) == 1);
+        return sign_flag;
+    } else return sign_flag ? abs_compare(a, b) == 1 : abs_compare(a, b) == -1;
+}
+
+bool operator<(big_integer const &a, big_integer const &b) {
+    return less_x_greater(a, b, a.sign);
 }
 
 bool operator>(big_integer const &a, big_integer const &b) {
-    if (a.sign != b.sign) {
-        return b.sign;
-    } else return (!a.sign && abs_compare(a, b) == 1) || (a.sign && abs_compare(a, b) == -1);
+    return less_x_greater(a, b, !a.sign);
 }
 
 bool operator<=(big_integer const &a, big_integer const &b) {
@@ -481,6 +472,12 @@ std::string to_string(big_integer const &a) {
     }
     std::reverse(str.begin(), str.end());
     return str;
+}
+
+big_integer big_integer::abs(big_integer const &a) {
+    big_integer res(a);
+    res.sign = false;
+    return res;
 }
 
 std::ostream &operator<<(std::ostream &stream, big_integer const &number) {
