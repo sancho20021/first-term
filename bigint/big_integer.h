@@ -107,16 +107,17 @@ private:
 
     void difference(big_integer const &dq, uint64_t k, uint64_t m);
 
-    friend int positive_equal_size_compare(big_integer const &a, big_integer const &b);
+    friend int abs_compare(big_integer const &a, big_integer const &b);
 
-    friend bool a_smaller_b(big_integer const &a, big_integer const &b);
-
-    static const big_integer ZERO;
-
+    friend big_integer add_abs(big_integer const &a, big_integer const &b, bool res_sign);
+    friend big_integer sub_abs(big_integer const &a, big_integer const &b, bool res_sign);
+    friend big_integer add_or_sub(big_integer const &a, big_integer const &b, bool flag);
 private:
     bool sign;
     std::vector<uint32_t> digits;
     static const uint32_t INT32_MIN_POSITIVE = 2147483648u;
+    static const big_integer ZERO;
+    static const big_integer ONE;
 };
 
 std::string to_string(big_integer const &a);

@@ -7,6 +7,7 @@
 
 using uint128_t = unsigned __int128;
 const big_integer big_integer::ZERO(0);
+const big_integer big_integer::ONE(1);
 
 big_integer::big_integer() {
     digits.push_back(0);
@@ -58,14 +59,14 @@ void invert(big_integer &x) {
     for (auto &i : x.digits) {
         i = ~i;
     }
-    x.sign = false;
-    x++;
-    x.sign = true;
+    x = add_abs(x, big_integer::ONE, true);
 }
 
 big_integer big_integer::two_completement(size_t nec_length) const {
     big_integer res(*this);
-    res.digits.resize(nec_length + 1);
+    while (res.digits.size() < nec_length) {
+        res.digits.push_back(0);
+    }
     invert(res);
     return res;
 }
@@ -155,14 +156,10 @@ big_integer big_integer::operator--(int) {
     return res;
 }
 
-big_integer operator+(big_integer const &a, big_integer const &b) {
-    if (b.sign) {
-        return a - (-b);
-    } else if (a.sign) {
-        return b - (-a);
-    }
+big_integer add_abs(big_integer const &a, big_integer const &b, bool res_sign) {
     big_integer res = a;
     uint64_t carry = 0;
+    res.sign = false;
     for (size_t i = 0; i < std::max(res.digits.size(), b.digits.size()) || carry; i++) {
         if (i == res.digits.size()) {
             res.digits.push_back(0);
@@ -172,21 +169,19 @@ big_integer operator+(big_integer const &a, big_integer const &b) {
         add_res -= carry * (static_cast<uint64_t>(UINT32_MAX) + 1);
         res.digits[i] = static_cast<uint32_t>(add_res);
     }
+    res.sign = res == big_integer::ZERO ? false : res_sign;
     return res;
 }
 
-big_integer operator-(big_integer const &a, big_integer const &b) {
-    if (a.sign) {
-        return -((-a) + b);
-    } else if (b.sign) {
-        return a + (-b);
-    }
-    bool res_sign = a < b;
-    auto big = res_sign ? b : a;
-    auto small = res_sign ? a : b;
+big_integer sub_abs(big_integer const &a, big_integer const &b, bool res_sign) {
+    bool less = abs_compare(a, b) == -1;
+    auto big = less ? b : a;
+    big.sign = false;
+    auto small = less ? a : b;
     int64_t carry = 0;
-    for (size_t i = 0; i < small.digits.size() || carry; i++) {
-        int64_t sub_res = big.digits[i] - (carry + (i < small.digits.size() ? small.digits[i] : 0));
+    small.digits.resize(big.digits.size());
+    for (size_t i = 0; i < small.digits.size(); i++) {
+        int64_t sub_res = big.digits[i] - carry - small.digits[i];
         carry = (sub_res < 0) ? 1 : 0;
         if (carry) {
             sub_res += static_cast<uint64_t>(UINT32_MAX) + 1;
@@ -196,6 +191,22 @@ big_integer operator-(big_integer const &a, big_integer const &b) {
     big.remove_leading_zeros();
     big.sign = big == big_integer::ZERO ? false : res_sign;
     return big;
+}
+
+big_integer add_or_sub(big_integer const &a, big_integer const &b, bool different_signs) {
+    if (different_signs) {
+        return sub_abs(a, b, a.sign != (abs_compare(a, b) == -1));
+    } else {
+        return add_abs(a, b, a.sign);
+    }
+}
+
+big_integer operator+(big_integer const &a, big_integer const &b) {
+    return add_or_sub(a, b, a.sign != b.sign);
+}
+
+big_integer operator-(big_integer const &a, big_integer const &b) {
+    return add_or_sub(a, b, a.sign == b.sign);
 }
 
 big_integer operator*(big_integer const &a, big_integer const &b) {
@@ -310,8 +321,8 @@ big_integer operator%(big_integer const &a, big_integer const &b) {
 
 big_integer logical_op(big_integer const &a, big_integer const &b, uint32_t (*op)(uint32_t, uint32_t)) {
     size_t max_size = std::max(a.digits.size(), b.digits.size());
-    big_integer trimmed_a = a.two_completement(max_size);
-    big_integer trimmed_b = b.two_completement(max_size);
+    big_integer trimmed_a = a.two_completement(max_size + 1);
+    big_integer trimmed_b = b.two_completement(max_size + 1);
     for (size_t i = 0; i < trimmed_b.digits.size(); i++) {
         trimmed_a.digits[i] = (*op)(trimmed_a.digits[i], trimmed_b.digits[i]);
     }
@@ -375,7 +386,7 @@ big_integer operator>>(big_integer const &a, int b) {
     auto bits_shift_amount = digits_shift_amount % BITS_IN_DIGIT;
     digits_shift_amount /= BITS_IN_DIGIT;
     if (num.sign) {
-        num = num.two_completement(num.digits.size() + digits_shift_amount);
+        num = num.two_completement(num.digits.size() + digits_shift_amount + 1);
     }
     big_integer res;
     if (digits_shift_amount >= num.digits.size()) {
@@ -417,7 +428,12 @@ bool operator!=(big_integer const &a, big_integer const &b) {
     return false;
 }
 
-int positive_equal_size_compare(big_integer const &a, big_integer const &b) {
+int abs_compare(big_integer const &a, big_integer const &b) {
+    if (a.digits.size() < b.digits.size()) {
+        return -1;
+    } else if (a.digits.size() > b.digits.size()) {
+        return 1;
+    }
     for (auto i = static_cast<uint32_t>(a.digits.size()); i > 0; i--) {
         if (a.digits[i - 1] > b.digits[i - 1]) {
             return 1;
@@ -428,32 +444,16 @@ int positive_equal_size_compare(big_integer const &a, big_integer const &b) {
     return 0;
 }
 
-bool a_smaller_b(big_integer const &a, big_integer const &b) {
+bool operator<(big_integer const &a, big_integer const &b) {
     if (a.sign != b.sign) {
         return a.sign;
-    } else if (a.digits.size() < b.digits.size()) {
-        return !a.sign;
-    } else if (a.digits.size() > b.digits.size()) {
-        return a.sign;
-    } else {
-        return (-a) > (-b);
-    }
-}
-
-bool operator<(big_integer const &a, big_integer const &b) {
-    if (a.sign == b.sign && !a.sign && a.digits.size() == b.digits.size()) {
-        return positive_equal_size_compare(a, b) == -1;
-    } else {
-        return a_smaller_b(a, b);
-    }
+    } else return (!a.sign && abs_compare(a, b) == -1) || (a.sign && abs_compare(a, b) == 1);
 }
 
 bool operator>(big_integer const &a, big_integer const &b) {
-    if (a.sign == b.sign && !a.sign && a.digits.size() == b.digits.size()) {
-        return positive_equal_size_compare(a, b) == 1;
-    } else {
-        return !a_smaller_b(a, b);
-    }
+    if (a.sign != b.sign) {
+        return b.sign;
+    } else return (!a.sign && abs_compare(a, b) == 1) || (a.sign && abs_compare(a, b) == -1);
 }
 
 bool operator<=(big_integer const &a, big_integer const &b) {
