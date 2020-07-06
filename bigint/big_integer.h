@@ -87,6 +87,8 @@ struct big_integer {
 
     friend std::string to_string(big_integer const &a);
 
+    static big_integer abs(big_integer const &a);
+
 private:
     void remove_leading_zeros();
 
@@ -110,8 +112,13 @@ private:
     friend int abs_compare(big_integer const &a, big_integer const &b);
 
     friend big_integer add_abs(big_integer const &a, big_integer const &b, bool res_sign);
+
     friend big_integer sub_abs(big_integer const &a, big_integer const &b, bool res_sign);
+
     friend big_integer add_or_sub(big_integer const &a, big_integer const &b, bool flag);
+
+    friend bool less_x_greater(big_integer const &a, big_integer const &b, bool sign_flag);
+
 private:
     bool sign;
     std::vector<uint32_t> digits;
