@@ -3,43 +3,44 @@
 #include <algorithm>
 #include "cmath"
 #include <stdexcept>
+#include <cassert>
 
 using uint128_t = unsigned __int128;
+const big_integer big_integer::ZERO(0);
 
 big_integer::big_integer() {
     digits.push_back(0);
     sign = false;
 }
 
-big_integer::big_integer(big_integer const &other) :
-        sign(other.sign),
-        digits(other.digits) {}
+big_integer::big_integer(big_integer const &other) = default;
 
 big_integer::big_integer(int a) {
     sign = a < 0;
-    digits.push_back(a == INT32_MIN ? 2147483648u : static_cast<uint32_t>(abs(a)));
+    digits.push_back(a == INT32_MIN ? INT32_MIN_POSITIVE : static_cast<uint32_t>(abs(a)));
 }
+
+const size_t DIGITS_IN_UINT32_T = 9;
 
 big_integer::big_integer(std::string const &str) : big_integer() {
     auto len = str.length();
-    uint32_t base = 1000000000;
+    uint32_t const BASE = 1000000000;
     bool tmp_sign = str[0] == '-';
-    size_t i = 0;
-    if (tmp_sign) {
-        i++;
-    }
-    for (; i < len; i += 9) {
+    size_t i = tmp_sign;
+    for (; i < len; i += DIGITS_IN_UINT32_T) {
         uint32_t short_number = 0;
-        size_t delta = std::min(len - i, 9ul);
+        size_t delta = std::min(len - i, DIGITS_IN_UINT32_T);
         for (size_t j = i; j < i + delta; j++) {
             short_number *= 10;
             short_number += static_cast<uint32_t>(str[j] - '0');
         }
-        *this *= delta == 9ul ? base : static_cast<uint32_t>(std::pow(10, delta));
+        *this *= delta == DIGITS_IN_UINT32_T ? BASE : static_cast<uint32_t>(std::pow(10, delta));
         *this += short_number;
     }
-    sign = tmp_sign;
     remove_leading_zeros();
+    if (*this != ZERO) {
+        sign = tmp_sign;
+    }
 }
 
 big_integer::~big_integer() = default;
@@ -58,7 +59,7 @@ void invert(big_integer &x) {
         i = ~i;
     }
     x.sign = false;
-    x += 1;
+    x++;
     x.sign = true;
 }
 
@@ -74,10 +75,6 @@ big_integer big_integer::to_unsigned() const {
     invert(res);
     res.remove_leading_zeros();
     return res;
-}
-
-bool big_integer::is_zero() const {
-    return digits.size() == 1 && digits[0] == 0;
 }
 
 big_integer &big_integer::operator=(big_integer const &other) = default;
@@ -126,7 +123,7 @@ big_integer big_integer::operator+() const { return *this; }
 
 big_integer big_integer::operator-() const {
     big_integer res(*this);
-    if (!res.is_zero()) {
+    if (res != ZERO) {
         res.sign = !res.sign;
     } else {
         res.sign = false;
@@ -197,13 +194,13 @@ big_integer operator-(big_integer const &a, big_integer const &b) {
         big.digits[i] = static_cast<uint32_t>(sub_res);
     }
     big.remove_leading_zeros();
-    big.sign = big.is_zero() ? false : res_sign;
+    big.sign = big == big_integer::ZERO ? false : res_sign;
     return big;
 }
 
 big_integer operator*(big_integer const &a, big_integer const &b) {
     big_integer res;
-    if (a.is_zero() || b.is_zero()) {
+    if (a == big_integer::ZERO || b == big_integer::ZERO) {
         return res;
     }
     res.digits.resize(a.digits.size() + b.digits.size());
@@ -235,7 +232,7 @@ std::pair<big_integer, uint32_t> big_integer::div_long_short(uint32_t x) const {
         res.digits[i] = static_cast<uint32_t>(cur_val / x);
         carry = cur_val % x;
     }
-    res.sign = res.is_zero() ? false : sign;
+    res.sign = res == ZERO ? false : sign;
     res.remove_leading_zeros();
     return {res, carry};
 }
@@ -253,24 +250,24 @@ bool big_integer::smaller(big_integer const &dq, uint64_t k, uint64_t m) const {
 }
 
 uint32_t big_integer::trial(uint64_t k, uint64_t m, uint64_t const d2) const {
-    const uint128_t base = uint128_t(UINT32_MAX) + 1;
+    const uint128_t BASE = uint128_t(UINT32_MAX) + 1;
     uint64_t km = k + m;
-    uint128_t r3 = (uint128_t(digits[km]) * base + uint128_t(digits[km - 1])) * base + uint128_t(digits[km - 2]);
+    uint128_t r3 = (uint128_t(digits[km]) * BASE + uint128_t(digits[km - 1])) * BASE + uint128_t(digits[km - 2]);
     return uint32_t(std::min(r3 / uint128_t(d2), uint128_t(UINT32_MAX)));
 }
 
 void big_integer::difference(big_integer const &dq, uint64_t k, uint64_t m) {
     int64_t borrow = 0, diff;
-    const int64_t base = int64_t(UINT32_MAX) + 1;
+    const int64_t BASE = int64_t(UINT32_MAX) + 1;
     for (uint64_t i = 0; i < m + 1; i++) {
-        diff = int64_t(digits[i + k]) - int64_t(dq.digits[i]) - borrow + base;
-        digits[i + k] = uint32_t(diff % base);
-        borrow = 1 - diff / base;
+        diff = int64_t(digits[i + k]) - int64_t(dq.digits[i]) - borrow + BASE;
+        digits[i + k] = uint32_t(diff % BASE);
+        borrow = 1 - diff / BASE;
     }
 }
 
 big_integer operator/(big_integer const &a, big_integer const &b) {
-    if (b.is_zero()) {
+    if (b == big_integer::ZERO) {
         throw std::runtime_error("Division by zero");
     } else if (a.digits.size() < b.digits.size()) {
         big_integer res;
@@ -363,7 +360,7 @@ big_integer operator<<(big_integer const &a, int b) {
     }
     res.digits.push_back(remainder);
     res.remove_leading_zeros();
-    res.sign = res.is_zero() ? false : a.sign;
+    res.sign = res == big_integer::ZERO ? false : a.sign;
     return res;
 }
 
@@ -400,7 +397,7 @@ big_integer operator>>(big_integer const &a, int b) {
         res.digits.pop_back();
     }
     res = res.to_unsigned();
-    res.sign = res.is_zero() ? false : res.sign;
+    res.sign = res == big_integer::ZERO ? false : res.sign;
     return res;
 }
 
@@ -468,12 +465,12 @@ bool operator>=(big_integer const &a, big_integer const &b) {
 }
 
 std::string to_string(big_integer const &a) {
-    if (a.is_zero()) {
+    if (a == big_integer::ZERO) {
         return "0";
     }
     std::string str;
     big_integer rest = a;
-    while (!rest.is_zero()) {
+    while (rest != big_integer::ZERO) {
         auto div_res = rest.div_long_short(10);
         rest = div_res.first;
         str.push_back('0' + char(div_res.second));
